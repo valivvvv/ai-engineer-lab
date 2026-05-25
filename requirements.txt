@@ -1,0 +1,18 @@
+# LangChain orchestration + providers
+langchain>=0.3,<0.4
+langchain-anthropic>=0.3,<0.4
+langchain-google-genai>=2.0,<3.0
+langchain-ollama>=0.2,<0.3
+
+# Tool parameter validation
+pydantic>=2.0,<3.0
+
+# Prompt templates (YAML + Jinja2)
+pyyaml>=6.0,<7.0
+jinja2>=3.1,<4.0
+
+# Environment management
+python-dotenv>=1.0,<2.0
+
+# Observability (env-var driven, no code changes required)
+langsmith>=0.1,<0.2
