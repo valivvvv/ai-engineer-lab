@@ -15,6 +15,7 @@ from jinja2 import Environment, StrictUndefined
 
 
 _DEFAULT_TEMPLATES_DIR = Path(__file__).parent / "templates"
+_FAIL_ON_MISSING_VARIABLES = StrictUndefined
 
 
 @dataclass(frozen=True)
@@ -32,9 +33,7 @@ class PromptRegistry:
 
     def __init__(self, templates_dir: Path | None = None) -> None:
         self._templates_dir = templates_dir or _DEFAULT_TEMPLATES_DIR
-        # StrictUndefined turns missing template variables into errors instead
-        # of silently rendering "" — catches typos and forgotten kwargs early.
-        self._jinja = Environment(undefined=StrictUndefined)
+        self._jinja = Environment(undefined=_FAIL_ON_MISSING_VARIABLES)
         self._templates: dict[str, PromptTemplate] = {}
         self.reload()
 

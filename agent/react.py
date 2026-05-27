@@ -87,7 +87,7 @@ def react_events(
 
         if not accumulated_message.tool_calls:
             yield Final(
-                answer=_message_text(accumulated_message),
+                answer=_flatten_message_content(accumulated_message),
                 messages=working_messages,
             )
             return
@@ -99,7 +99,7 @@ def react_events(
             )
 
     yield Final(
-        answer=_max_iterations_message(max_iterations, working_messages),
+        answer=_iteration_cap_message_for_user(),
         messages=working_messages,
     )
 
@@ -129,7 +129,7 @@ async def react_events_async(
 
         if not accumulated_message.tool_calls:
             yield Final(
-                answer=_message_text(accumulated_message),
+                answer=_flatten_message_content(accumulated_message),
                 messages=working_messages,
             )
             return
@@ -146,7 +146,7 @@ async def react_events_async(
             )
 
     yield Final(
-        answer=_max_iterations_message(max_iterations, working_messages),
+        answer=_iteration_cap_message_for_user(),
         messages=working_messages,
     )
 
@@ -184,10 +184,7 @@ async def react_loop_async(
 # --- Internal helpers -------------------------------------------------------
 
 
-def _message_text(message: BaseMessage) -> str:
-    # LangChain's message.content is `str | list[dict]`. Anthropic returns
-    # content-blocks (e.g., {"type": "text", "text": "..."}) when streaming
-    # or when extended-thinking is enabled. This coerces both shapes to str.
+def _flatten_message_content(message: BaseMessage) -> str:
     content = message.content
     if isinstance(content, str):
         return content
@@ -210,14 +207,7 @@ def _extract_text(message: BaseMessage) -> Iterator[str]:
                 yield text
 
 
-def _max_iterations_message(
-    max_iterations: int, messages: list[BaseMessage]
-) -> str:
-    # The detailed trace (iteration count, last raw model output, tool calls)
-    # is preserved in `messages` and surfaces in LangSmith. The user-facing
-    # string stays generic to avoid leaking internal plumbing per the system
-    # prompt's "never expose tool plumbing" rule.
-    _ = max_iterations, messages
+def _iteration_cap_message_for_user() -> str:
     return (
         "I couldn't complete this request. Try rephrasing it, or breaking it "
         "into smaller steps."

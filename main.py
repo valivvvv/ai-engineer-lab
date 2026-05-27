@@ -34,12 +34,14 @@ _DEMO_QUERIES: list[tuple[str, str]] = [
 
 def run_demo(agent: QAAgent) -> None:
     for label, query in _DEMO_QUERIES:
-        # Each demo query is independent; clear history so earlier
-        # tool calls don't bleed into the next turn's context.
-        agent.clear_history()
-        print(f"\n========== {label} ==========")
-        print(f"USER:\n  {query}\n")
-        print(f"ASSISTANT:\n  {agent.chat(query)}")
+        _run_one_independent_query(agent, label, query)
+
+
+def _run_one_independent_query(agent: QAAgent, label: str, query: str) -> None:
+    agent.clear_history()
+    print(f"\n========== {label} ==========")
+    print(f"USER:\n  {query}\n")
+    print(f"ASSISTANT:\n  {agent.chat(query)}")
 
 
 def run_repl(agent: QAAgent, stream: bool) -> None:

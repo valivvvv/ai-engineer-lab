@@ -10,6 +10,7 @@ from typing import AsyncIterator, Iterator
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.tools import StructuredTool
 
 from agent.llm_factory import LLMFactory
 from agent.react import (
@@ -49,21 +50,29 @@ class QAAgent:
             temperature=temperature,
         ).bind_tools(tool_catalog)
 
-        render_variables: dict[str, object] = {
+        system_prompt = get_prompt_registry().render(
+            prompt_name,
+            **self._build_render_variables(assistant_name, tool_catalog, language),
+        )
+        self._system_message = SystemMessage(content=system_prompt)
+        self._history: list[BaseMessage] = [self._system_message]
+
+    @staticmethod
+    def _build_render_variables(
+        assistant_name: str,
+        tool_catalog: list[StructuredTool],
+        language: str | None,
+    ) -> dict[str, object]:
+        variables: dict[str, object] = {
             "assistant_name": assistant_name,
             "tools": [
                 {"name": tool.name, "description": tool.description}
                 for tool in tool_catalog
             ],
         }
-        # Only pass `language` when explicitly set — otherwise the template's
-        # Jinja `default(...)` filter substitutes the fallback wording.
         if language is not None:
-            render_variables["language"] = language
-
-        system_prompt = get_prompt_registry().render(prompt_name, **render_variables)
-        self._system_message = SystemMessage(content=system_prompt)
-        self._history: list[BaseMessage] = [self._system_message]
+            variables["language"] = language
+        return variables
 
     def chat(self, message: str) -> str:
         """Send a message, run the ReAct loop, return the final answer."""

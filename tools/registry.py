@@ -94,18 +94,14 @@ class ToolWrapper:
 
 
 def _to_structured_tool(entry: ToolEntry) -> StructuredTool:
-    # LangChain calls the tool's func with kwargs taken from the LLM's JSON
-    # response. Our registered functions take a single Pydantic model, so we
-    # wrap them here. This keeps tool authors writing the cleaner Pydantic
-    # style without imposing the kwargs convention on them.
-    def kwargs_adapter(**kwargs: Any) -> str:
+    def langchain_kwargs_to_pydantic_call(**kwargs: Any) -> str:
         return str(entry.func(entry.params_model(**kwargs)))
 
-    kwargs_adapter.__name__ = entry.name
-    kwargs_adapter.__doc__ = entry.description
+    langchain_kwargs_to_pydantic_call.__name__ = entry.name
+    langchain_kwargs_to_pydantic_call.__doc__ = entry.description
 
     return StructuredTool.from_function(
-        func=kwargs_adapter,
+        func=langchain_kwargs_to_pydantic_call,
         name=entry.name,
         description=entry.description,
         args_schema=entry.params_model,

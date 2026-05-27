@@ -6,10 +6,12 @@ and importing it below — no central manifest to keep in sync.
 """
 from .registry import TOOL_REGISTRY, ToolWrapper, register_tool
 
-# Side-effect imports: each module's @register_tool decorator runs at import
-# time, populating TOOL_REGISTRY. Order doesn't matter.
-from . import calculator  # noqa: F401
-from . import current_datetime  # noqa: F401
-from . import web_search  # noqa: F401
+
+def _register_builtin_tools() -> None:
+    from . import calculator, current_datetime, web_search
+    _ = calculator, current_datetime, web_search
+
+
+_register_builtin_tools()
 
 __all__ = ["TOOL_REGISTRY", "ToolWrapper", "register_tool"]
