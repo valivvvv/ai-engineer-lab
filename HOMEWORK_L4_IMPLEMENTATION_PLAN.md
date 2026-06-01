@@ -38,7 +38,7 @@ Acceptance demo: `agent.chat("Ce clauze de reziliere avem?")` returns an answer 
 | Decision | Choice | Why |
 |---|---|---|
 | Where code lives | **Extend `ai-engineer-lab/`** | Homework says "connect to the L1–L2 agent" (that *is* this repo); repo is designed to grow. |
-| Postgres + pgvector | **Reuse the shared `../llm docker containers/` stack** (postgres on **5432**, db/user `skillab`, pass `skillab_dev`) — do **not** add a new compose file | The shared infra ("Start once, use in all lessons") already runs `pgvector/pgvector:pg16` and its comment names it the RAG/storage DB. A second container on 5433 would be redundant. Homework tables (`documents`, `document_chunks`) live in the existing `skillab` DB; Alembic still creates the `vector` extension + tables. |
+| Postgres + pgvector | **In-repo `llm docker containers/` stack** (postgres on **5432**, db/user `skillab`, pass `skillab_dev`) — no separate per-lesson compose | The course's shared infra stack (`pgvector/pgvector:pg16` + ollama + litellm) was **moved into this repo** (2026-06-01) since all lessons build on top of this project; it's now versioned here. Run it with `docker compose up -d` from `llm docker containers/`. Homework tables (`documents`, `document_chunks`) live in the `skillab` DB; Alembic still creates the `vector` extension + tables. The folder's `.env` (real API key), `.venv/`, `.idea/` are gitignored. |
 | Structured extraction | **LangChain `llm.with_structured_output(Schema)`** | Vendor-neutral via the existing `LLMFactory`; matches homework snippet. |
 | Embedding model | **`paraphrase-multilingual-MiniLM-L12-v2`** (384-dim) | Data samples are Romanian; needs RO retrieval quality. 384 dims fits `Vector(384)`. |
 | Extraction LLM provider | **Gemini or Anthropic** (explicit `model=`) | Local Ollama 3B is unreliable for structured extraction. Interface stays neutral. |
@@ -89,8 +89,8 @@ There is **no DB layer yet** — you are adding `db/`, `extraction/`, `rag/` fre
 
 ```
 ai-engineer-lab/
-│   # NOTE: no docker-compose.yml here — Postgres+pgvector is the SHARED
-│   #   ../llm docker containers/ stack (postgres on 5432, db/user skillab).
+├── llm docker containers/      # IN-REPO infra stack (postgres+pgvector on 5432,
+│                               #   ollama, litellm). Run: docker compose up -d here.
 ├── alembic.ini                 # NEW
 ├── alembic/                    # NEW — env.py (imports models), versions/
 ├── db/                         # NEW
@@ -159,7 +159,7 @@ question
 
 ### Phase 0 — Infrastructure  ✅ DONE (2026-06-01)
 > Outcome: shared `skillab-postgres` (5432) confirmed healthy; deps installed into `.venv` (torch/sentence-transformers/sqlalchemy/alembic/pgvector/loaders); `alembic init alembic` scaffolded `alembic.ini` + `alembic/`; smoke test passed — `SELECT 1` + `vector` extension live at 0.8.2. `DATABASE_URL` added to `.env`/`.env.example`. (Note: `.venv` pip/console-script shebangs are stale from an old dir name — invoke via `.venv/bin/python -m pip` / `-m alembic`.) `alembic.ini` URL + `env.py` target_metadata intentionally left for Phase 2.
-- **Postgres+pgvector is already provided** by the shared `../llm docker containers/docker-compose.yml` (`pgvector/pgvector:pg16`, container `skillab-postgres`, **port 5432**, db/user `skillab`, password `skillab_dev`, volume `skillab-postgres-data`). **Do not create a new compose file.** If the stack isn't running: `docker compose up -d postgres` from that directory.
+- **Postgres+pgvector is provided** by the in-repo `llm docker containers/docker-compose.yml` (`pgvector/pgvector:pg16`, container `skillab-postgres`, **port 5432**, db/user `skillab`, password `skillab_dev`, volume `skillab-postgres-data`). **Do not create a new compose file.** If the stack isn't running: `docker compose up -d postgres` from `llm docker containers/`.
 - `.env` / `.env.example`: add `DATABASE_URL=postgresql://skillab:skillab_dev@localhost:5432/skillab`. The extraction provider key (`GOOGLE_API_KEY`) is already present in `.env`.
 - `requirements.txt`: add **`sqlalchemy`**, **`psycopg2-binary`** (the DB driver for `postgresql://` — not currently in the repo), **`pgvector`**, **`alembic`**, **`sentence-transformers`** (pulls **torch** — expect a slow first install and first model load), **`langchain-community`** (the loaders live here — the repo only ships `langchain-core` + provider packages today), **`langchain-text-splitters`** (`RecursiveCharacterTextSplitter`), **`pypdf`**, **`docx2txt`**. Check `requirements.txt` for anything already pinned before adding.
 - `alembic init alembic`.
