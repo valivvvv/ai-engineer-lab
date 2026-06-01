@@ -16,3 +16,18 @@ python-dotenv>=1.0,<2.0
 
 # Observability (env-var driven, no code changes required)
 langsmith>=0.1,<0.2
+
+# Database + pgvector storage (Postgres lives in the shared ../llm docker containers/ stack)
+sqlalchemy>=2.0,<3.0
+psycopg2-binary>=2.9,<3.0
+pgvector>=0.3,<0.4
+alembic>=1.13,<2.0
+
+# Document loading + chunking for extraction/RAG
+langchain-community>=0.3,<0.4
+langchain-text-splitters>=0.3,<0.4
+pypdf>=4.0,<6.0
+docx2txt>=0.8,<0.10
+
+# Embeddings (multilingual sentence-transformers; pulls torch — slow first install)
+sentence-transformers>=3.0,<4.0
