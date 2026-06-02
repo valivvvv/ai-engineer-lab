@@ -42,7 +42,7 @@ Acceptance demo: `agent.chat("Ce clauze de reziliere avem?")` returns an answer 
 | Structured extraction | **LangChain `llm.with_structured_output(Schema)`** | Vendor-neutral via the existing `LLMFactory`; matches homework snippet. |
 | Embedding model | **`paraphrase-multilingual-MiniLM-L12-v2`** (384-dim) | Data samples are Romanian; needs RO retrieval quality. 384 dims fits `Vector(384)`. |
 | Extraction LLM provider | **Gemini or Anthropic** (explicit `model=`) | Local Ollama 3B is unreliable for structured extraction. Interface stays neutral. |
-| Write vs read ownership | **`ExtractionPipeline` = write path; `RAGService` = read-only** | Mirrors homework's `process()` (writes) vs `rag.search()` (reads). Avoids duplicate indexing logic. |
+| Write vs read ownership | **`IngestionPipeline` = write path; `RAGService` = read-only** | Mirrors homework's `process()` (writes) vs `rag.search()` (reads). Avoids duplicate indexing logic. |
 | Full-text search (tsvector) | **Deferred** | Not required; the lesson snippet for it is buggy (references an undefined `search_vector` column). |
 | HNSW index | **Phase 5 (optional)** | Linear scan is fine at demo scale (<10k chunks). |
 
@@ -102,8 +102,8 @@ ai-engineer-lab/
 │   ├── __init__.py
 │   ├── schemas.py              # Invoice, Contract (Pydantic + Field descriptions)
 │   ├── loaders.py              # extension → loader registry
-│   ├── chunking.py             # split_for_retrieval(), should_chunk_for_extraction()
-│   └── pipeline.py             # ExtractionPipeline (the WRITE path)
+│   ├── chunking.py             # split_text(), should_chunk_for_extraction()
+│   └── ingestion.py            # IngestionPipeline (the WRITE path)
 ├── rag/                        # NEW
 │   ├── __init__.py
 │   ├── embeddings.py           # EmbeddingService (lazy singleton)
@@ -131,12 +131,12 @@ These are distinct instances; `bind_tools` and `with_structured_output` do not c
 
 ## 7. Data flows
 
-**Index (write path — `ExtractionPipeline`):**
+**Index (write path — `IngestionPipeline`):**
 ```
 file
  → loaders.load(path)                      # extension → loader, returns text/Documents
  → { extract structured fields,            # with_structured_output on FULL text (or first chunks)
-     split_for_retrieval(text) }           # ALWAYS ≥1 chunk, even for small docs
+     split_text(text) }                    # ALWAYS ≥1 chunk, even for small docs
  → EmbeddingService.embed_batch(chunks)
  → transaction(): DocumentRepository.create(content, doc_metadata=structured.model_dump())
                   ChunkRepository.create_batch(document_id, chunks, embeddings)
@@ -165,11 +165,12 @@ question
 - `alembic init alembic`.
 - **Smoke:** confirm the shared `skillab-postgres` container is up, then a SQLAlchemy connection to `DATABASE_URL` succeeds and `CREATE EXTENSION IF NOT EXISTS vector` runs without error.
 
-### Phase 1 — Extraction (no DB yet)
-- `extraction/schemas.py`: `Invoice` and `Contract` Pydantic models with `Field(description=...)` on every field; optional fields use defaults. (Reference fields from `lesson3.pdf`: invoice → `numar, data, client, furnizor, total, produse: list[...]`; contract → `numar, data_incheiere, prestator, beneficiar, valoare, durata_luni, obligatii_prestator: list[str]`.)
+### Phase 1 — Extraction (no DB yet)  ✅ DONE (2026-06-02)
+> Outcome: `schemas.py` / `loaders.py` / `chunking.py` / `ingestion.py` written; smoke test passed — invoice + contract extracted accurately (RO diacritics intact), 2 and 3 chunks. **Extraction model = `gemini-2.5-flash`** (set as `EXTRACTION_MODEL` in `ingestion.py`, overridable). Note the model trap: this key's free tier is `limit: 0` for `gemini-2.0-flash` (429), and `gemini-1.5-flash` is retired (404) — `2.5-flash` is the working flash model. `IngestionPipeline.process` returns `(structured_object, chunks)`; no DB yet (Phase 3 adds embed + persist).
+- `extraction/schemas.py`: `Invoice` and `Contract` Pydantic models with `Field(description=...)` on every field; optional fields use defaults. **Field names are English** (source docs are Romanian, but the LLM is multilingual and maps onto these fields): invoice → `number, date, client, supplier, total, products: list[Product]` where `Product` is `name, quantity, unit_price, line_total`; contract → `number, date_concluded, provider, beneficiary, value, duration_months, provider_obligations: list[str]`. Only `number` is required on each; the rest default to `None`/empty.
 - `extraction/loaders.py`: registry `{".pdf": PyPDFLoader, ".docx": Docx2txtLoader, ".txt": TextLoader, ".csv": CSVLoader}` from `langchain_community.document_loaders`; `load_document(path)` resolves by suffix, raises a clear error on unsupported types; `TextLoader` must pass `encoding="utf-8"`.
-- `extraction/chunking.py`: `split_for_retrieval(text, chunk_size=1000, chunk_overlap=200) -> list[str]` via `RecursiveCharacterTextSplitter` (returns ≥1 chunk); `should_chunk_for_extraction(text, max_chars=4000) -> bool`.
-- `extraction/pipeline.py`: `ExtractionPipeline.process(path, doc_type)` that **for Phase 1 returns `(structured_object, chunks)`** and does not touch the DB. Build the extraction LLM here via `LLMFactory.create(provider="gemini", model=...).with_structured_output(Invoice|Contract)`, routed by `doc_type`.
+- `extraction/chunking.py`: `split_text(text, chunk_size=1000, chunk_overlap=200) -> list[str]` via `RecursiveCharacterTextSplitter` (returns ≥1 chunk); `should_chunk_for_extraction(text, max_chars=4000) -> bool`.
+- `extraction/ingestion.py`: `IngestionPipeline.process(path, document_kind)` that **for Phase 1 returns `(structured_object, chunks)`** and does not touch the DB. `document_kind` is the entity kind (`"invoice"` / `"contract"`), not the file extension. Split the text once and pass the chunks to extraction; build the extraction LLM via `LLMFactory.create(provider="gemini", model=...).with_structured_output(Invoice|Contract)`, routed by `document_kind`.
 - **Smoke:** run on `data samples/factura_001.txt` and `data samples/contract_servicii.txt`; print the structured object and the chunk count.
 
 ### Phase 2 — Storage
@@ -192,7 +193,7 @@ question
   - score = `(1 - DocumentChunk.embedding.cosine_distance(query_embedding)).label("score")`;
   - `select(DocumentChunk, score).options(joinedload(DocumentChunk.document)).order_by(DocumentChunk.embedding.cosine_distance(query_embedding)).limit(top_k)`;
   - return `[(chunk, float(score)) for ...]`. (`joinedload` avoids N+1 when the tool reads `chunk.document.filename`.)
-- Add the embed+store tail to `ExtractionPipeline.process` (now writes): embed chunks, persist `Document` + `DocumentChunk`s in one `transaction()`.
+- Add the embed+store tail to `IngestionPipeline.process` (now writes): embed chunks, persist `Document` + `DocumentChunk`s in one `transaction()`.
 - `rag/service.py`: `RAGService(db)` — **read-only**. `search(query, top_k=5)` (embed query → `similarity_search`); `get_context(query, top_k=5, threshold=0.4)` → filter by score, return formatted string or `""` if nothing passes.
 - **Smoke:** index the `data samples` via the pipeline; `RAGService.search("clauze de reziliere")` ranks a relevant contract chunk first with a sane score.
 

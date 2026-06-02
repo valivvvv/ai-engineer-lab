@@ -24,6 +24,14 @@ concepts as unfamiliar and explain them; don't assume them.
    pause and wait for Vali's questions or go-ahead before doing the next one.
    Never chain multiple steps in one go. Do **not** run ahead "to be helpful" —
    that is the "headless chicken" failure Vali explicitly called out.
+   - **A "step" is the smallest reviewable unit — a single file or action, NOT a
+     whole phase.** A phase in the implementation plan bundles several steps; do
+     not collapse them into one go. The plan's "one phase at a time" never
+     overrides this "after each step" rule.
+   - **Answering a question I asked is NOT a go-ahead.** When I pose a question
+     (including via AskUserQuestion) and Vali answers, the turn returns to Vali —
+     his next move is to ask his own questions or give an explicit go-ahead. I
+     must stop and wait, not start implementing.
 2. **Explain before and after, inclusively.** Before a step: what it is, *why*
    we're doing it, and how it fits the bigger picture. After: show the output
    and interpret what it means. Define new terms, libraries, flags, and commands
