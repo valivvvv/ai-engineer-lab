@@ -10,7 +10,7 @@ and cosine-distance machinery).
 from __future__ import annotations
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from db.models import Document, DocumentChunk
 
@@ -78,3 +78,17 @@ class ChunkRepository:
             .order_by(DocumentChunk.chunk_index)
         )
         return list(self._db.scalars(statement).all())
+
+    def similarity_search(
+        self, query_embedding: list[float], top_k: int = 5
+    ) -> list[tuple[DocumentChunk, float]]:
+        distance_expression = DocumentChunk.embedding.cosine_distance(query_embedding)
+        score_expression = (1 - distance_expression).label("score")
+
+        statement = (
+            select(DocumentChunk, score_expression)
+            .options(joinedload(DocumentChunk.document))
+            .order_by(distance_expression)
+            .limit(top_k)
+        )
+        return [(chunk, float(score)) for chunk, score in self._db.execute(statement)]

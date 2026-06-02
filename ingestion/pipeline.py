@@ -1,7 +1,8 @@
-"""Ingestion (write) path: a document file in, structured fields + chunks out.
+"""Ingestion (write) path: a document file in, a persisted document out.
 
-Phase 1 stops at returning `(structured_object, chunks)` in memory; embedding and
-persistence are added in Phase 3.
+Loads the file, splits it into chunks, extracts structured fields with the
+extraction LLM, embeds every chunk, then stores the `Document` and its
+`DocumentChunk`s in one transaction and returns the new document's id.
 """
 from __future__ import annotations
 
@@ -10,6 +11,9 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from agent.llm_factory import LLMFactory
+from db.database import transaction
+from db.repositories import ChunkRepository, DocumentRepository
+from rag.embeddings import EmbeddingService
 from .chunking import should_chunk_for_extraction, split_text
 from .loaders import load_document
 from .schemas import Contract, Invoice
@@ -31,10 +35,9 @@ class IngestionPipeline:
         model: str = EXTRACTION_MODEL,
     ) -> None:
         self._llm = LLMFactory.create(provider=provider, model=model, temperature=0.0)
+        self._embedding_service = EmbeddingService()
 
-    def process(
-        self, path: str | Path, document_kind: str
-    ) -> tuple[BaseModel, list[str]]:
+    def process(self, path: str | Path, document_kind: str) -> int:
         schema = _SCHEMA_BY_KIND.get(document_kind)
         if schema is None:
             supported = ", ".join(sorted(_SCHEMA_BY_KIND))
@@ -44,7 +47,16 @@ class IngestionPipeline:
         text = load_document(path)
         chunks = split_text(text)
         structured_object = self._extract(text, chunks, schema)
-        return structured_object, chunks
+        embeddings = self._embedding_service.embed_batch(chunks)
+
+        with transaction() as session:
+            document = DocumentRepository(session).create(
+                filename=Path(path).name,
+                content=text,
+                doc_metadata=structured_object.model_dump(),
+            )
+            ChunkRepository(session).create_batch(document.id, chunks, embeddings)
+            return document.id
 
     def _extract(
         self, text: str, chunks: list[str], schema: type[BaseModel]
