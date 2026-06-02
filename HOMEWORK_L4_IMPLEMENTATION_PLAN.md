@@ -82,6 +82,7 @@ There is **no DB layer yet** — you are adding `db/`, `extraction/`, `rag/` fre
 3. **Present ideas before doing them.** No unsolicited renames/refactors of existing code.
 4. **Plan-first, smoke-test each phase.** Per §0: you write each phase, the user reviews the diff; stop after each phase's smoke test rather than implementing multiple phases unprompted.
 5. Match surrounding code style (provider-neutral factory, registry patterns, YAML prompts).
+6. **Smoke tests are versioned `.py` files, not ad-hoc heredocs.** From Phase 3 on, each phase's smoke test is a committed script under `scripts/` (e.g. `scripts/smoke_phase3.py`), run via `.venv/bin/python scripts/smoke_phaseN.py`. Keeps verification visible, re-runnable, and in git.
 
 ---
 
@@ -112,6 +113,7 @@ ai-engineer-lab/
 │   └── search_documents.py     # NEW tool (register in tools/__init__.py)
 ├── prompts/templates/
 │   └── analyst_system.yaml     # NEW prompt
+├── scripts/                    # NEW — versioned per-phase smoke tests (smoke_phaseN.py)
 ├── agent/                      # EXISTING — do not modify core loop
 └── requirements.txt            # EXISTING — extend
 ```
