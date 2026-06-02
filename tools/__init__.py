@@ -8,8 +8,8 @@ from .registry import TOOL_REGISTRY, ToolWrapper, register_tool
 
 
 def _register_builtin_tools() -> None:
-    from . import calculator, current_datetime, web_search
-    _ = calculator, current_datetime, web_search
+    from . import calculator, current_datetime, search_documents, web_search
+    _ = calculator, current_datetime, search_documents, web_search
 
 
 _register_builtin_tools()

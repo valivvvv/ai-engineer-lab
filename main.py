@@ -12,6 +12,7 @@ import sys
 
 from dotenv import load_dotenv
 
+import config
 from agent.qa import QAAgent
 
 
@@ -89,7 +90,11 @@ def main() -> None:
     arguments = parser.parse_args()
 
     load_dotenv()
-    agent = QAAgent(language=arguments.language)
+    agent = QAAgent(
+        provider=config.AGENT.provider,
+        model=config.AGENT.model,
+        language=arguments.language,
+    )
 
     if arguments.repl:
         run_repl(agent, stream=arguments.stream)

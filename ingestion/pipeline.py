@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from agent.llm_factory import LLMFactory
+import config
 from db.database import transaction
 from db.repositories import ChunkRepository, DocumentRepository
 from rag.embeddings import EmbeddingService
@@ -18,8 +18,6 @@ from .chunking import should_chunk_for_extraction, split_text
 from .loaders import load_document
 from .schemas import Contract, Invoice
 
-EXTRACTION_PROVIDER = "gemini"
-EXTRACTION_MODEL = "gemini-2.5-flash"
 EXTRACTION_CHUNK_LIMIT = 3
 
 _SCHEMA_BY_KIND: dict[str, type[BaseModel]] = {
@@ -29,12 +27,8 @@ _SCHEMA_BY_KIND: dict[str, type[BaseModel]] = {
 
 
 class IngestionPipeline:
-    def __init__(
-        self,
-        provider: str = EXTRACTION_PROVIDER,
-        model: str = EXTRACTION_MODEL,
-    ) -> None:
-        self._llm = LLMFactory.create(provider=provider, model=model, temperature=0.0)
+    def __init__(self, model_choice: config.ModelChoice = config.EXTRACTION) -> None:
+        self._llm = config.build_model(model_choice)
         self._embedding_service = EmbeddingService()
 
     def process(self, path: str | Path, document_kind: str) -> int:

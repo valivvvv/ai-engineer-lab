@@ -115,6 +115,9 @@ ai-engineer-lab/
 ├── prompts/templates/
 │   └── analyst_system.yaml     # NEW prompt
 ├── scripts/                    # NEW — versioned smoke tests, named by what they exercise (smoke_rag.py)
+
+├── config.py                   # NEW — single source of truth for the agent/extraction
+│                               #   provider+model (AGENT, EXTRACTION) + build_model()
 ├── agent/                      # EXISTING — do not modify core loop
 └── requirements.txt            # EXISTING — extend
 ```
@@ -125,10 +128,10 @@ No import cycles: `db/` depends on nothing app-level; `ingestion/` and `rag/` de
 
 ## 6. The two LLM instances (keep them separate)
 
-- **Agent LLM** — `LLMFactory.create(...).bind_tools(catalog)` inside `QAAgent`. Provider may stay Ollama. Runs the ReAct loop and **generates** the final answer.
-- **Extraction LLM** — a *separate* instance: `LLMFactory.create(provider="gemini", model="<gemini-model>").with_structured_output(Invoice)`. **Pass `model=` explicitly** (do not let it inherit the Ollama `DEFAULT_MODEL`).
+- **Agent LLM** — `bind_tools(catalog)` inside `QAAgent`. Provider may stay Ollama. Runs the ReAct loop and **generates** the final answer.
+- **Extraction LLM** — a *separate* instance with `.with_structured_output(Invoice)`.
 
-These are distinct instances; `bind_tools` and `with_structured_output` do not conflict because they are never applied to the same object.
+Both provider+model choices live in **`config.py`** (`config.AGENT`, `config.EXTRACTION`) — the single source of truth. Change a model by editing that file; nothing else hardcodes a provider/model. These are distinct instances; `bind_tools` and `with_structured_output` do not conflict because they are never applied to the same object.
 
 ---
 
@@ -204,7 +207,11 @@ question
 - `rag/retriever.py`: `DocumentRetriever(db)` — **read-only**. `search(query, top_k=5)` (embed query → `similarity_search`); `get_context(query, top_k=5, threshold=0.3)` → filter by score, return formatted string or `""` if nothing passes. (`DEFAULT_SCORE_THRESHOLD = 0.3` — calibrated down from the provisional 0.4; see the read-path note in §7.)
 - **Smoke:** index the `data samples` via the pipeline; `DocumentRetriever.search("clauze de reziliere")` ranks a relevant contract chunk first with a sane score.
 
-### Phase 4 — Agent integration
+### Phase 4 — Agent integration  ✅ DONE (2026-06-02)
+> What works now: the assistant can be asked questions in plain language
+> (including Romanian) about the already-loaded documents, and it answers from
+> them, pointing back to the document it drew from — or says so when the answer
+> isn't there.
 - `tools/search_documents.py`:
   ```python
   class SearchDocumentsParams(BaseModel):
