@@ -233,8 +233,13 @@ question
 - **Smoke:** `QAAgent(prompt_name="analyst_system").chat("Ce clauze de reziliere avem?")` answers from the loaded docs and cites a filename.
 
 ### Phase 5 — Polish (optional, only if asked)
-- HNSW index: `CREATE INDEX ... USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)` (idempotent; `CREATE INDEX CONCURRENTLY` in real production). Justified once chunk count grows.
-- Batch indexing with continue-on-error; LangSmith traces (env-var driven, EU endpoint per repo convention).
+> Done (2026-06-02): on-demand `scripts/index_documents.py` only. Dedupe is
+> keyed on filename (`get_by_filename`) — append, no wipe; a changed file needs
+> its row deleted first. LangSmith tracing on (env-var driven, EU, project
+> `skillab-ai-engineer`). HNSW index not built.
+- HNSW index: `CREATE INDEX ... USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)` (idempotent; `CREATE INDEX CONCURRENTLY` in real production). Justified once chunk count grows. — not built.
+- Batch indexing with continue-on-error: built (`scripts/index_documents.py`).
+- LangSmith traces: built — env-var driven, EU endpoint, project `skillab-ai-engineer`; LangChain auto-instruments the agent + extraction LLM calls (no app code).
 
 ---
 

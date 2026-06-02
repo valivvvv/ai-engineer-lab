@@ -1,141 +1,113 @@
-# Homework — Lesson 2: QA Agent with Tools + Prompts
+# ai-engineer-lab — RAG Document Analyst
 
-A ReAct-style Q&A agent built on LangChain, demonstrating:
+A ReAct-style Q&A agent (LangChain) extended into a **document analyst**: it
+ingests documents, stores them in PostgreSQL + `pgvector`, and answers questions
+over them via retrieval-augmented generation (RAG), citing its sources. Part of
+an ongoing AI-engineering lab, so the codebase keeps growing.
 
-- **Prompt Registry** — versioned YAML prompts rendered with Jinja2
-- **Tool Registry** — Pydantic-validated tools registered via decorator
-- **ReAct loop** — Think → Act → Observe, with parallel async tools available
-- **Provider-agnostic LLM** — Ollama (local), Google Gemini, or Anthropic Claude
-- **Observability** — LangSmith via env vars, zero code changes
+## What it does
+
+- **Q&A agent** — a Think → Act → Observe loop with Pydantic-validated tools and
+  versioned prompts.
+- **Document analyst (RAG)** — ingests PDF / DOCX / TXT / CSV, stores chunk
+  embeddings in Postgres + `pgvector`, and answers questions grounded in those
+  documents, citing the source filename (or saying it doesn't know).
+- **Provider-agnostic LLM** — Ollama (local), Google Gemini, or Anthropic Claude.
+- **Observability** — optional LangSmith tracing, enabled purely via env vars.
 
 ## Prerequisites
 
 - Python 3.10+
-- Docker — for the local Ollama stack in `../llm docker containers/`
-- (Optional) A LangSmith account for traces — https://smith.langchain.com (US) or https://eu.smith.langchain.com (EU)
+- Docker — for the in-repo stack in `llm docker containers/` (Postgres + pgvector,
+  Ollama)
+- An API key for the extraction LLM (Gemini or Anthropic)
+- (Optional) A LangSmith account for traces
 
 ## Setup
 
 ```bash
-cd "homework-lesson-2"
+cd ai-engineer-lab
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # then fill in real values where needed
+cp .env.example .env   # then fill in real values (provider API key, etc.)
 ```
 
-Start the local LLM stack:
+Bring up the local stack (Postgres + pgvector, Ollama):
 
 ```bash
-cd "../llm docker containers"
-docker-compose up -d
+cd "llm docker containers"
+docker compose up -d
 ```
 
-Confirm Ollama is up and has `llama3.2:3b`:
+Create the database schema, then index the sample documents:
+
+```bash
+python -m alembic upgrade head
+python scripts/index_documents.py
+```
+
+Confirm Ollama has `llama3.2:3b` (the default agent model):
 
 ```bash
 curl http://localhost:11434/api/tags
-# If llama3.2:3b is missing:
+# If it's missing:
 docker exec -it ollama ollama pull llama3.2:3b
 ```
 
 ## Run
 
 ```bash
-# Run the canonical demo (one query per registered tool)
+# Agent demo (one query per tool) + interactive REPL
 python main.py
-
-# Interactive REPL
 python main.py --repl
-
-# REPL with streamed responses
 python main.py --repl --stream
-
-# Force the agent to reply in a specific language
 python main.py --repl --language Romanian
+
+# Index the sample documents (write path)
+python scripts/index_documents.py
+
+# Ask a question over the indexed documents (RAG analyst)
+python scripts/smoke_analyst.py
 ```
 
 ## Architecture
 
 ```
-                            QAAgent  (agent/qa.py)
-                            ───────────────────────
-                            public API: chat() / stream() / clear_history()
-                                       │
-                ┌──────────────────────┼──────────────────────┐
-                ▼                      ▼                      ▼
-        LLMFactory.create        ToolWrapper           PromptRegistry
-        (agent/llm_factory.py)   (tools/registry.py)   (prompts/registry.py)
-                │                      │                      │
-                │                      │                      │
-                └─── .bind_tools(catalog) ──┐                 │
-                                            ▼                 ▼
-                                     tool-aware LLM    rendered system prompt
-                                            │                 │
-                                            └───────┬─────────┘
-                                                    ▼
-                                       react_events()  (agent/react.py)
-                                       ──────────────────────────────
-                                       single-source-of-truth generator
-                                       yields TextChunk + Final events
+INDEX  (write path — ingestion/, run via scripts/index_documents.py)
+  file (PDF / DOCX / TXT / CSV)
+    → load → chunk → extract structured fields     (ingestion/)
+    → embed chunks                                 (rag/embeddings.py)
+    → store: Document + DocumentChunk              (db/ → Postgres + pgvector)
 
-           react_loop()  ──── consumes Final ──── QAAgent.chat()
-           QAAgent.stream()  ──── consumes TextChunk + Final
+
+ASK  (read path — the agent)
+  QAAgent  (agent/qa.py)  ── chat() / stream() / clear_history()
+       │
+       ├─ PromptRegistry  (prompts/)            renders the system prompt
+       ├─ LLMFactory      (agent/llm_factory)   Ollama / Gemini / Anthropic
+       └─ ToolWrapper     (tools/registry)      .bind_tools(catalog)
+                   │
+                   ▼
+         react_events()  (agent/react.py)  ── Think → Act → Observe
+                   │
+                   ▼
+         search_documents tool  ──►  DocumentRetriever  (rag/retriever.py)
+                   │                          │
+                   │                          ▼
+                   │              embed query + similarity search over pgvector
+                   ▼
+         grounded answer, with source citation
 ```
 
-## File structure
+## Components
 
-```
-homework-lesson-2/
-├── main.py                       # entry point
-├── requirements.txt
-├── .env.example                  # template (committed)
-├── .env                          # real values (gitignored)
-│
-├── agent/
-│   ├── __init__.py
-│   ├── llm_factory.py            # Provider factory (Ollama / Gemini / Anthropic)
-│   ├── react.py                  # Event types + react_events + react_loop
-│   └── qa.py                     # QAAgent — public API
-│
-├── prompts/
-│   ├── __init__.py
-│   ├── registry.py               # PromptRegistry, PromptTemplate, get_prompt_registry()
-│   └── templates/
-│       └── qa_system.yaml        # Versioned system prompt
-│
-└── tools/
-    ├── __init__.py               # Side-effect imports register each tool
-    ├── registry.py               # @register_tool decorator + ToolWrapper
-    ├── calculator.py             # Safe arithmetic (AST sandbox)
-    ├── current_datetime.py       # Now in IANA timezone
-    └── web_search.py             # Stubbed search (fake results)
-```
-
-## Design patterns used
-
-| Pattern | Where |
+| Package | Responsibility |
 |---|---|
-| **Factory** | `LLMFactory.create()` — hides per-provider construction details |
-| **Registry** | `TOOL_REGISTRY`, `PromptRegistry` — name → object lookup tables |
-| **Singleton** | `get_prompt_registry()` — lazy-initialized module-level instance |
-| **Decorator** | `@register_tool` — populates the registry at import time |
-| **Adapter** | `ToolWrapper.catalog()` — bridges our Pydantic-style tools to LangChain's `StructuredTool` |
-| **Generator-based primitive** | `react_events()` — one source of truth, two consumption shapes (returning + streaming) |
-
-## Observability
-
-LangSmith integration is env-var driven — no code changes anywhere in the project.
-
-To enable, set in `.env`:
-
-```bash
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=lsv2_pt_...
-LANGCHAIN_PROJECT=homework-lesson-2
-# EU users:
-LANGCHAIN_ENDPOINT=https://eu.api.smith.langchain.com
-```
-
-Every LLM call and tool execution will appear as spans in the
-`homework-lesson-2` project at https://smith.langchain.com (or the EU equivalent).
+| `agent/` | The ReAct loop (`react_events`), the `QAAgent` public API, and the provider-agnostic LLM factory. |
+| `tools/` | Tools the agent can call — registered via `@register_tool` (calculator, datetime, web-search stub, `search_documents`). |
+| `prompts/` | Versioned YAML system prompts (`qa_system`, `analyst_system`), rendered with Jinja2. |
+| `ingestion/` | Write path: load → chunk → structured extraction → embed → store. |
+| `rag/` | Read path: embeddings + retriever for similarity search over chunks. |
+| `db/` | Postgres + `pgvector` models, repositories, and Alembic migrations. |
+| `scripts/` | Runnable smoke tests and the document indexer. |
